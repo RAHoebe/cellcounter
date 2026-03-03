@@ -44,7 +44,7 @@ class AboutDialog(QDialog):
 
         # Version
         lbl_ver = QLabel(f"Version {version}")
-        lbl_ver.setFont(QFont("MS Sans Serif", 9, QFont.Weight.Bold))
+        lbl_ver.setFont(QFont("Segoe UI", 9, QFont.Weight.Bold))
         layout.addWidget(lbl_ver)
 
         # Description
@@ -53,7 +53,10 @@ class AboutDialog(QDialog):
             "Key = +1    Shift+Key = −1    Ctrl+Key = Reset to 0\n"
             "R = Reset all counters to zero\n"
             "Alarm values can be set, alarm sound can be configured.\n"
-            "Sound, defaults, key assignments and names are saved per settings slot."
+            "Sound, defaults, key assignments and names are saved per settings slot.\n\n"
+            "Key mode (bottom bar):\n"
+            "  Local  — keys register only when CellCounter has focus\n"
+            "  Global — keys register system-wide, even when another application has focus"
         )
         lbl_desc.setWordWrap(True)
         layout.addWidget(lbl_desc)

@@ -16,6 +16,8 @@ Originally written in **Visual Basic 6** (2008), now fully rewritten in **Python
   - `R` = **Reset all counters** (with confirmation)
 - **Per-counter alarms** — set a target value, pick a sound (8 built-in alarm WAVs)
 - **Sum alarm** — fires when the total across all counters hits a threshold
+- **Local / Global key mode** — choose whether keys are captured only when the
+  window has focus (*Local*) or system-wide (*Global*, via `pynput`)
 - **Keyclick sound** — audible feedback on every keypress (toggle on/off)
 - **8 settings slots** — save and recall complete configurations (names, keys, colours, alarms)
 - **Customisable counter names and colours** via right-click context menus
@@ -33,11 +35,12 @@ Originally written in **Visual Basic 6** (2008), now fully rewritten in **Python
 
 ## Requirements
 
-| Dependency | Version |
-|---|---|
-| Python | ≥ 3.10 |
-| PyQt6 | ≥ 6.6 |
-| platformdirs | ≥ 4.0 |
+| Dependency | Version | Notes |
+|---|---|---|
+| Python | ≥ 3.10 | |
+| PyQt6 | ≥ 6.6 | |
+| platformdirs | ≥ 4.0 | |
+| pynput | ≥ 1.7 | Required for Global key mode |
 
 Platform: **Windows** (uses `winsound` for audio playback and `msinfo32` for System Info).
 
@@ -114,6 +117,7 @@ CellCounter/
 │   ├── settings.py          # JSON settings persistence (8 slots)
 │   ├── logger.py            # Tab-delimited session logger
 │   ├── sound.py             # Sound playback (winsound) & click generation
+│   ├── global_keys.py       # System-wide keyboard listener (pynput)
 │   ├── about_dialog.py      # About dialog
 │   └── resources/           # Bundled assets
 │       ├── app.ico          # Application icon (16–256 px)
@@ -149,6 +153,10 @@ Each of the **8 slots** stores:
 - Number of active counters (4 / 8 / 12 / 16)
 - Sum alarm value & sound
 - Keyclick on/off
+
+A **global** setting (outside slots) stores:
+
+- Key mode preference (Local / Global)
 
 ---
 

@@ -48,6 +48,7 @@ from PyQt6.QtWidgets import (
 )
 
 from cellcounter.counter_widget import CounterWidget
+from cellcounter.global_keys import GlobalKeyListener
 from cellcounter.key_map import ALARM_NAMES, KEY_LIST
 from cellcounter.logger import DataLogger
 from cellcounter.settings import NUM_COUNTERS, NUM_SLOTS, SettingsStore
@@ -83,6 +84,11 @@ class CellCounterWindow(QMainWindow):
         self._current_slot = 1
         self._use_counters = 4        # active counter count
         self._loading = False         # suppress saves during load
+        self._global_mode = False     # True when system-wide keys active
+
+        # Global keyboard listener (pynput)
+        self._global_keys = GlobalKeyListener()
+        self._global_keys.key_pressed.connect(self._on_global_key)
 
         # Build UI first (so _sound.ensure_loaded() has a live QApplication)
         self._counters: list[CounterWidget] = []
@@ -94,6 +100,9 @@ class CellCounterWindow(QMainWindow):
 
         # Now load settings (may call _apply_counter_count)
         self._load_slot(1)
+
+        # Restore key-mode preference (after UI exists)
+        self._restore_key_mode()
 
     # ==================================================================
     # Window setup
@@ -209,6 +218,22 @@ class CellCounterWindow(QMainWindow):
         self.cmb_custom.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.cmb_custom.currentIndexChanged.connect(self._on_slot_changed)
         layout.addWidget(self.cmb_custom)
+
+        # -- Key mode selector --
+        layout.addWidget(QLabel("Keys:"))
+        self.cmb_key_mode = QComboBox()
+        self.cmb_key_mode.addItems(["Local", "Global"])
+        self.cmb_key_mode.setFixedWidth(70)
+        self.cmb_key_mode.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.cmb_key_mode.setToolTip(
+            "Local: keys register only when this window has focus\n"
+            "Global: keys register system-wide (even without focus)"
+        )
+        if not GlobalKeyListener.available():
+            self.cmb_key_mode.setEnabled(False)
+            self.cmb_key_mode.setToolTip("Global mode unavailable (pynput not installed)")
+        self.cmb_key_mode.currentIndexChanged.connect(self._on_key_mode_changed)
+        layout.addWidget(self.cmb_key_mode)
 
         # -- Keyclick checkbox --
         self.chk_sound = QCheckBox("Keyclick")
@@ -422,32 +447,68 @@ class CellCounterWindow(QMainWindow):
     # ==================================================================
 
     def keyPressEvent(self, event: QKeyEvent):
+        # In global mode the pynput listener handles all keys — skip local
+        if self._global_mode:
+            super().keyPressEvent(event)
+            return
+
         # Ignore auto-repeat
         if event.isAutoRepeat():
             return
 
-        key = event.key()
-        mods = event.modifiers()
+        self._dispatch_key(event.key(), event.modifiers())
 
+    # ------------------------------------------------------------------
+
+    def _dispatch_key(self, key: int, mods) -> None:
+        """Common handler used by both local keyPressEvent and global hook."""
         # R (any modifier) → reset all
         if key == Qt.Key.Key_R:
             self._clear_all()
             return
+
+        # Normalise to Qt flags so bitwise & works for both int (pynput)
+        # and KeyboardModifier (Qt event).
+        mods = Qt.KeyboardModifier(mods)
+        ctrl  = bool(mods & Qt.KeyboardModifier.ControlModifier)
+        shift = bool(mods & Qt.KeyboardModifier.ShiftModifier)
 
         for i in range(self._use_counters):
             w = self._counters[i]
             if w._input_open:
                 continue
             if key == w.assigned_key:
-                if mods & Qt.KeyboardModifier.ControlModifier:
+                if ctrl:
                     w.reset_value()
-                elif mods & Qt.KeyboardModifier.ShiftModifier:
+                elif shift:
                     w.decrement()
                 else:
                     w.increment()
                 return
 
-        super().keyPressEvent(event)
+    # ------------------------------------------------------------------
+    # Global-key mode helpers
+    # ------------------------------------------------------------------
+
+    def _on_global_key(self, qt_key: int, qt_mods: int) -> None:
+        """Slot for GlobalKeyListener.key_pressed signal."""
+        self._dispatch_key(qt_key, qt_mods)
+
+    def _on_key_mode_changed(self, combo_index: int) -> None:
+        self._global_mode = combo_index == 1
+        if self._global_mode:
+            self._global_keys.start()
+        else:
+            self._global_keys.stop()
+        self._store.save_global("global_keys", self._global_mode)
+
+    def _restore_key_mode(self) -> None:
+        """Apply persisted key-mode preference at startup."""
+        stored = self._store.load_global("global_keys", False)
+        if stored and GlobalKeyListener.available():
+            self.cmb_key_mode.setCurrentIndex(1)  # triggers _on_key_mode_changed
+        else:
+            self.cmb_key_mode.setCurrentIndex(0)
 
     # ==================================================================
     # Sum calculation
@@ -669,6 +730,7 @@ class CellCounterWindow(QMainWindow):
     # ==================================================================
 
     def closeEvent(self, event: QCloseEvent):
+        self._global_keys.stop()
         self._save_current_slot()
         self._logger.close()   # deletes temp log (mirrors Form_Unload)
         super().closeEvent(event)

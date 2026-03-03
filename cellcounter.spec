@@ -5,26 +5,28 @@
 
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all
 
 block_cipher = None
 
 # Collect all WAV files from cellcounter/resources/
 resources_src = os.path.join('cellcounter', 'resources')
 
+# Gather ALL PyQt6 submodules, data files, and binaries
+pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all('PyQt6')
+pynput_datas, pynput_binaries, pynput_hiddenimports = collect_all('pynput')
+
 a = Analysis(
     ['cellcounter/__main__.py'],
     pathex=['.'],
-    binaries=[],
+    binaries=pyqt6_binaries + pynput_binaries,
     datas=[
         (resources_src, 'resources'),   # all WAVs bundled alongside exe
         ('version.txt', '.'),            # version file at bundle root
-    ],
+    ] + pyqt6_datas + pynput_datas,
     hiddenimports=[
-        'PyQt6.QtCore',
-        'PyQt6.QtGui',
-        'PyQt6.QtWidgets',
         'platformdirs',
-    ],
+    ] + pyqt6_hiddenimports + pynput_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

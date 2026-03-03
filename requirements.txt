@@ -1,2 +1,3 @@
 PyQt6>=6.6
 platformdirs>=4.0
+pynput>=1.7

@@ -82,15 +82,18 @@ class SettingsStore:
                 with SETTINGS_FILE.open("r", encoding="utf-8") as f:
                     raw = json.load(f)
                 self._data = raw.get("slots", {})
+                self._globals = raw.get("globals", {})
             except Exception:
                 self._data = {}
+                self._globals = {}
         else:
             self._data = {}
+            self._globals = {}
 
     def _save_file(self):
         _DATA_DIR.mkdir(parents=True, exist_ok=True)
         with SETTINGS_FILE.open("w", encoding="utf-8") as f:
-            json.dump({"slots": self._data}, f, indent=2)
+            json.dump({"slots": self._data, "globals": self._globals}, f, indent=2)
 
     # ------------------------------------------------------------------
     # Public API
@@ -129,6 +132,15 @@ class SettingsStore:
         if key not in self._data:
             self._data[key] = _default_slot(slot)
         self._data[key]["custom_name"] = name
+        self._save_file()
+
+    def load_global(self, key: str, default=None):
+        """Return a global (non-slot) setting."""
+        return self._globals.get(key, default)
+
+    def save_global(self, key: str, value) -> None:
+        """Persist a global (non-slot) setting."""
+        self._globals[key] = value
         self._save_file()
 
     def data_dir(self) -> Path:

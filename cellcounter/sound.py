@@ -66,7 +66,7 @@ if sys.platform == 'win32':
     import winsound as _winsound
 
     def _play_bytes(data: bytes):
-        flags = _winsound.SND_MEMORY | _winsound.SND_ASYNC | _winsound.SND_NOWAIT | _winsound.SND_NODEFAULT
+        flags = _winsound.SND_MEMORY | _winsound.SND_ASYNC | _winsound.SND_NODEFAULT
         try:
             _winsound.PlaySound(data, flags)
         except Exception:
@@ -113,8 +113,8 @@ class SoundPlayer:
         self._click_enabled = enabled
 
     def play_click(self):
-        if self._click_enabled:
-            _play_bytes(_CLICK_BYTES)
+        if self._click_enabled and self._click_wav and self._click_wav.exists():
+            _play_file_async(str(self._click_wav))
 
     def play_alarm(self, alarm_index: int):
         if not self._loaded:
