@@ -13,13 +13,19 @@ Originally written in **Visual Basic 6** (2008), now fully rewritten in **Python
 - **52 assignable keyboard keys** — arrow keys and A–Z, 0–9, plus extras
 - **One-key counting**: press the assigned key to increment
   - `Key` = **+1** &ensp;|&ensp; `Shift+Key` = **−1** &ensp;|&ensp; `Ctrl+Key` = **Reset to 0**
-  - `R` = **Reset all counters** (with confirmation)
+  - `R` = **Reset all counters** (with optional confirmation)
+  - `×` button next to Counters Sum = **Reset all counters**
 - **Per-counter alarms** — set a target value, pick a sound (8 built-in alarm WAVs)
 - **Sum alarm** — fires when the total across all counters hits a threshold
 - **Local / Global key mode** — choose whether keys are captured only when the
   window has focus (*Local*) or system-wide (*Global*, via `pynput`)
+  - Global listener auto-restarts if the keyboard hook is lost (e.g. after sleep / idle)
 - **Keyclick sound** — audible feedback on every keypress (toggle on/off)
 - **8 settings slots** — save and recall complete configurations (names, keys, colours, alarms)
+  - Reset a slot to defaults via **Format → Reset Current Slot to Defaults**
+- **Optional reset confirmation** — the "Reset all counters" dialog includes a
+  *Don't ask me again* checkbox; toggle it back on via **Format → Confirm Before Resetting Counters**
+- **Single reset dialog** — pressing `R` multiple times won't stack duplicate popups
 - **Customisable counter names and colours** via right-click context menus
 - **Progress bar** showing the proportion of sum alarm reached
 - **Session logging** — tab-delimited log with millisecond-precision timestamps
@@ -157,6 +163,7 @@ Each of the **8 slots** stores:
 A **global** setting (outside slots) stores:
 
 - Key mode preference (Local / Global)
+- Reset confirmation preference (show / skip dialog)
 
 ---
 
