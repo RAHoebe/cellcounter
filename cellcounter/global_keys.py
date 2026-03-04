@@ -75,6 +75,7 @@ if _HAS_PYNPUT:
 class _KeySignalBridge(QObject):
     """Transfers events from the pynput thread to the Qt main thread."""
     key_pressed = pyqtSignal(int, int)  # (qt_key_value, qt_modifiers_mask)
+    listener_died = pyqtSignal()         # emitted when the hook is lost
 
 
 # ── Public class ──────────────────────────────────────────────────────
@@ -104,6 +105,11 @@ class GlobalKeyListener:
         """pyqtSignal(int, int) — connect to receive (qt_key, qt_modifiers)."""
         return self._bridge.key_pressed
 
+    @property
+    def listener_died(self):
+        """pyqtSignal() — emitted when the keyboard hook is unexpectedly lost."""
+        return self._bridge.listener_died
+
     @staticmethod
     def available() -> bool:
         """Return True if pynput is installed."""
@@ -117,6 +123,10 @@ class GlobalKeyListener:
         if not _HAS_PYNPUT or self._active:
             return
         self._ctrl = self._shift = False
+        self._start_listener()
+
+    def _start_listener(self) -> None:
+        """Create and start a new pynput Listener."""
         self._listener = keyboard.Listener(
             on_press=self._on_press,
             on_release=self._on_release,
@@ -124,12 +134,26 @@ class GlobalKeyListener:
         self._listener.daemon = True
         self._listener.start()
         self._active = True
+        # Monitor the listener thread so we can detect when the hook dies
+        import threading  # noqa: PLC0415
+        def _watchdog():
+            self._listener.join()  # blocks until listener thread ends
+            if self._active:       # unexpected death (not user-initiated stop)
+                self._bridge.listener_died.emit()
+        t = threading.Thread(target=_watchdog, daemon=True)
+        t.start()
+
+    def restart(self) -> None:
+        """Restart the listener after it has died unexpectedly."""
+        self.stop()
+        self._ctrl = self._shift = False
+        self._start_listener()
 
     def stop(self) -> None:
+        self._active = False        # set first so watchdog won't emit
         if self._listener is not None:
             self._listener.stop()
             self._listener = None
-        self._active = False
         self._ctrl = self._shift = False
 
     # -- pynput callbacks (background thread) -----------------------------

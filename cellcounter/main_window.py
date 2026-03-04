@@ -85,10 +85,12 @@ class CellCounterWindow(QMainWindow):
         self._use_counters = 4        # active counter count
         self._loading = False         # suppress saves during load
         self._global_mode = False     # True when system-wide keys active
+        self._reset_dialog_open = False  # guard against stacking reset dialogs
 
         # Global keyboard listener (pynput)
         self._global_keys = GlobalKeyListener()
         self._global_keys.key_pressed.connect(self._on_global_key)
+        self._global_keys.listener_died.connect(self._on_listener_died)
 
         # Build UI first (so _sound.ensure_loaded() has a live QApplication)
         self._counters: list[CounterWidget] = []
@@ -187,6 +189,14 @@ class CellCounterWindow(QMainWindow):
         m_fmt = mb.addMenu("F&ormat")
         m_fmt.addAction("Rename Current Settings Slot…", self._rename_slot)
         m_fmt.addAction("Edit Sum Alarm Value…",          self._edit_sum_alarm)
+        m_fmt.addAction("Reset Current Slot to Defaults…", self._reset_current_slot)
+        m_fmt.addSeparator()
+        self._act_confirm_reset = m_fmt.addAction("Confirm Before Resetting Counters")
+        self._act_confirm_reset.setCheckable(True)
+        self._act_confirm_reset.setChecked(
+            not self._store.load_global("skip_reset_confirm", False)
+        )
+        self._act_confirm_reset.toggled.connect(self._on_confirm_reset_toggled)
 
         # Help
         m_help = mb.addMenu("&Help")
@@ -297,13 +307,13 @@ class CellCounterWindow(QMainWindow):
         layout.addWidget(self.lbl_sum)
 
         # -- Reset / Copy / Clear / Exit buttons --
-        btn_reset_slot = QPushButton("×")
-        btn_reset_slot.setFixedSize(24, 24)
-        btn_reset_slot.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        btn_reset_slot.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        btn_reset_slot.setToolTip("Reset current slot settings to defaults")
-        btn_reset_slot.clicked.connect(self._reset_current_slot)
-        layout.addWidget(btn_reset_slot)
+        btn_reset_all = QPushButton("×")
+        btn_reset_all.setFixedSize(24, 24)
+        btn_reset_all.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        btn_reset_all.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        btn_reset_all.setToolTip("Reset all counters to zero")
+        btn_reset_all.clicked.connect(self._clear_all)
+        layout.addWidget(btn_reset_all)
 
         btn_copy = QPushButton("⎘")
         btn_copy.setFixedSize(24, 24)
@@ -494,6 +504,11 @@ class CellCounterWindow(QMainWindow):
         """Slot for GlobalKeyListener.key_pressed signal."""
         self._dispatch_key(qt_key, qt_mods)
 
+    def _on_listener_died(self) -> None:
+        """Auto-restart the global key hook if it dies unexpectedly."""
+        if self._global_mode:
+            self._global_keys.restart()
+
     def _on_key_mode_changed(self, combo_index: int) -> None:
         self._global_mode = combo_index == 1
         if self._global_mode:
@@ -565,25 +580,48 @@ class CellCounterWindow(QMainWindow):
         self._sound.set_click_enabled(bool(state))
         self._save_current_slot()
 
-    def _clear_all(self):
-        reply = QMessageBox.question(
-            self, "Reset All Counters",
-            "Reset all counters to zero?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+    def _do_reset_all(self):
+        """Unconditionally reset all counters to zero."""
+        for w in self._counters:
+            w.set_value(0.0)
+        self._update_sum(-1)
+        self._save_current_slot()
+        # Restart log session
+        slot_name = self._slot_name(self._current_slot)
+        self._logger.start_session(
+            slot=self._current_slot,
+            slot_name=slot_name,
+            counter_names=[self._counters[i].title() for i in range(self._use_counters)],
+            use_counters=self._use_counters,
         )
+
+    def _clear_all(self):
+        # Prevent multiple stacking reset dialogs
+        if self._reset_dialog_open:
+            return
+
+        # If user opted out of the confirmation, reset immediately
+        if self._store.load_global("skip_reset_confirm", False):
+            self._do_reset_all()
+            return
+
+        self._reset_dialog_open = True
+        dlg = QMessageBox(self)
+        dlg.setWindowTitle("Reset All Counters")
+        dlg.setText("Reset all counters to zero?")
+        dlg.setIcon(QMessageBox.Icon.Question)
+        dlg.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        chk = QCheckBox("Don't ask me again")
+        dlg.setCheckBox(chk)
+        reply = dlg.exec()
+        self._reset_dialog_open = False
+
         if reply == QMessageBox.StandardButton.Yes:
-            for w in self._counters:
-                w.set_value(0.0)
-            self._update_sum(-1)
-            self._save_current_slot()
-            # Restart log session
-            slot_name = self._slot_name(self._current_slot)
-            self._logger.start_session(
-                slot=self._current_slot,
-                slot_name=slot_name,
-                counter_names=[self._counters[i].title() for i in range(self._use_counters)],
-                use_counters=self._use_counters,
-            )
+            if chk.isChecked():
+                self._store.save_global("skip_reset_confirm", True)
+            self._do_reset_all()
 
     def _reset_current_slot(self):
         reply = QMessageBox.question(
@@ -634,6 +672,9 @@ class CellCounterWindow(QMainWindow):
             self.lbl_sum_alarm.setText(str(val))
             self._save_current_slot()
             self._update_sum(-1)  # refresh progress bar
+
+    def _on_confirm_reset_toggled(self, checked: bool):
+        self._store.save_global("skip_reset_confirm", not checked)
 
     # ==================================================================
     # File / clipboard operations
