@@ -23,6 +23,12 @@ Originally written in **Visual Basic 6** (2008), now fully rewritten in **Python
 - **Keyclick sound** — audible feedback on every keypress (toggle on/off)
 - **8 settings slots** — save and recall complete configurations (names, keys, colours, alarms)
   - Reset a slot to defaults via **Format → Reset Current Slot to Defaults**
+- **Three-step compact view** — reduce window size to save screen space
+  - **Full View**: All controls and options visible (standard mode)
+  - **Compact View**: Shows only counter names, values, and sum (hides buttons and configuration controls)
+  - **Ultra-Compact View**: Further reduces window width (~60% of full) with smaller fonts for minimal screen footprint
+  - Navigate bidirectionally using ▼ (collapse) and ▲ (expand) buttons
+  - Always starts in Full View; compact state maintained during session but resets on restart
 - **Optional reset confirmation** — the "Reset all counters" dialog includes a
   *Don't ask me again* checkbox; toggle it back on via **Format → Confirm Before Resetting Counters**
 - **Single reset dialog** — pressing `R` multiple times won't stack duplicate popups
