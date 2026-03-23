@@ -301,6 +301,66 @@ class CounterWidget(QGroupBox):
         self.value = float(v)
         self._update_display(-1000)
 
+    def set_compact_mode(self, mode: int):
+        """Show/hide controls for compact view mode.
+        
+        Args:
+            mode: 0=full, 1=compact, 2=ultra-compact
+        """
+        is_compact = mode > 0  # Any compact mode hides controls
+        is_ultra = mode == 2   # Ultra-compact also reduces sizes
+        
+        # Keep visible: counter name (QGroupBox title) and lbl_value
+        # Hide when compact: buttons, alarms, config row
+        self.btn_plus.setVisible(not is_compact)
+        self.btn_minus.setVisible(not is_compact)
+        self.btn_reset.setVisible(not is_compact)
+        self.btn_edit_alarm.setVisible(not is_compact)
+        self.lbl_alarm_val.setVisible(not is_compact)
+        self.chk_add.setVisible(not is_compact)
+        self.progress.setVisible(not is_compact)
+        self.cmb_key.setVisible(not is_compact)
+        self.cmb_alarm.setVisible(not is_compact)
+        
+        # Also hide the "Alarm" label - find it in the layout
+        for i in range(self.layout().count()):
+            item = self.layout().itemAt(i)
+            if item and item.layout():
+                # This is row2 (QHBoxLayout)
+                for j in range(item.layout().count()):
+                    sub_item = item.layout().itemAt(j)
+                    if sub_item and sub_item.layout():
+                        # This is center_col (QVBoxLayout)
+                        for k in range(sub_item.layout().count()):
+                            alarm_item = sub_item.layout().itemAt(k)
+                            if alarm_item and alarm_item.layout():
+                                # This is alarm_row
+                                for m in range(alarm_item.layout().count()):
+                                    label_item = alarm_item.layout().itemAt(m)
+                                    if label_item and label_item.widget():
+                                        widget = label_item.widget()
+                                        if isinstance(widget, QLabel) and widget.text() == "Alarm":
+                                            widget.setVisible(not is_compact)
+        
+        # Adjust font size and spacing for ultra-compact mode
+        if is_ultra:
+            # Reduce font size for value label
+            self.lbl_value.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+            self.lbl_value.setMinimumHeight(40)
+            # Reduce outer margins
+            self.layout().setContentsMargins(4, 14, 4, 2)
+        else:
+            # Restore normal sizes
+            if mode == 0:  # Only restore in full mode, not compact
+                self.lbl_value.setFont(QFont("Arial", 36, QFont.Weight.Bold))
+                self.lbl_value.setMinimumHeight(54)
+                self.layout().setContentsMargins(6, 18, 6, 4)
+            else:  # Compact but not ultra
+                # Keep compact size but not ultra-reduced
+                self.lbl_value.setFont(QFont("Arial", 36, QFont.Weight.Bold))
+                self.lbl_value.setMinimumHeight(54)
+                self.layout().setContentsMargins(6, 18, 6, 4)
+
     # ------------------------------------------------------------------
     # Display helpers
     # ------------------------------------------------------------------

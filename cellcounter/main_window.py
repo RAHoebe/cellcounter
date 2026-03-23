@@ -86,6 +86,7 @@ class CellCounterWindow(QMainWindow):
         self._loading = False         # suppress saves during load
         self._global_mode = False     # True when system-wide keys active
         self._reset_dialog_open = False  # guard against stacking reset dialogs
+        self._compact_mode = 0        # 0=full, 1=compact, 2=ultra-compact
 
         # Global keyboard listener (pynput)
         self._global_keys = GlobalKeyListener()
@@ -325,6 +326,24 @@ class CellCounterWindow(QMainWindow):
 
         layout.addStretch(1)
 
+        # -- Expand/Collapse buttons --
+        self.btn_expand = QPushButton("▲")
+        self.btn_expand.setFixedSize(28, 24)
+        self.btn_expand.setFont(QFont("Arial", 10))
+        self.btn_expand.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_expand.setToolTip("Expand view")
+        self.btn_expand.clicked.connect(self._expand_view)
+        self.btn_expand.setVisible(False)  # Hidden initially (in full mode)
+        layout.addWidget(self.btn_expand)
+
+        self.btn_collapse = QPushButton("▼")
+        self.btn_collapse.setFixedSize(28, 24)
+        self.btn_collapse.setFont(QFont("Arial", 10))
+        self.btn_collapse.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.btn_collapse.setToolTip("Collapse to compact view")
+        self.btn_collapse.clicked.connect(self._collapse_view)
+        layout.addWidget(self.btn_collapse)
+
         btn_exit = QPushButton("Exit")
         btn_exit.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         btn_exit.clicked.connect(self.close)
@@ -450,6 +469,151 @@ class CellCounterWindow(QMainWindow):
         self.setMinimumHeight(0)
         self.setMaximumHeight(16777215)
         self.resize(self.width(), total)
+        self.setFixedHeight(total)
+
+    # ==================================================================
+    # Compact view (full / compact / ultra-compact)
+    # ==================================================================
+
+    def _collapse_view(self):
+        """Collapse to the next more compact mode: full → compact → ultra-compact."""
+        if self._compact_mode < 2:  # Can collapse if not already in ultra-compact
+            self._compact_mode += 1
+            self._apply_compact_mode(self._compact_mode)
+
+    def _expand_view(self):
+        """Expand to the next less compact mode: ultra-compact → compact → full."""
+        if self._compact_mode > 0:  # Can expand if not already in full
+            self._compact_mode -= 1
+            self._apply_compact_mode(self._compact_mode)
+
+    def _apply_compact_mode(self, mode: int):
+        """Show/hide UI elements based on compact mode state.
+        
+        Args:
+            mode: 0=full, 1=compact, 2=ultra-compact
+        """
+        # Update button visibility and tooltips
+        # Mode 0 (Full): Only show collapse button (▼)
+        # Mode 1 (Compact): Show both expand (▲) and collapse (▼) buttons
+        # Mode 2 (Ultra): Only show expand button (▲)
+        if mode == 0:  # Full
+            self.btn_expand.setVisible(False)
+            self.btn_collapse.setVisible(True)
+            self.btn_collapse.setToolTip("Collapse to compact view")
+        elif mode == 1:  # Compact
+            self.btn_expand.setVisible(True)
+            self.btn_expand.setToolTip("Expand to full view")
+            self.btn_collapse.setVisible(True)
+            self.btn_collapse.setToolTip("Collapse to ultra-compact view")
+        else:  # Ultra-compact (mode == 2)
+            self.btn_expand.setVisible(True)
+            self.btn_expand.setToolTip("Expand to compact view")
+            self.btn_collapse.setVisible(False)
+
+        # Apply compact mode to all counter widgets
+        for counter in self._counters:
+            counter.set_compact_mode(mode)
+
+        # Hide/show bottom bar controls
+        is_collapsed = mode > 0  # Hide controls in both compact and ultra-compact
+        
+        widgets_to_hide = [
+            self.cmb_num,
+            self.cmb_custom,
+            self.cmb_key_mode,
+            self.chk_sound,
+            self.cmb_sum_alarm,
+            self.lbl_sum_alarm,
+            self.sum_progress,
+        ]
+        
+        # Find and hide labels in bottom bar (but keep "Counters Sum:" label and sum value visible)
+        for i in range(self._bottom_bar.layout().count()):
+            item = self._bottom_bar.layout().itemAt(i)
+            if item and item.widget():
+                widget = item.widget()
+                if isinstance(widget, QLabel):
+                    # Keep "Counters Sum:" label and the sum value label (self.lbl_sum) visible
+                    if widget is not self.lbl_sum:
+                        text = widget.text()
+                        # Hide all labels except "Counters Sum:"
+                        if text and text != "Counters Sum:":
+                            widget.setVisible(not is_collapsed)
+                elif isinstance(widget, QPushButton):
+                    # Hide all buttons except reset all (×), copy (⎘), expand/collapse, and exit
+                    if widget.text() not in ["×", "⎘", "▲", "▼", "Exit"]:
+                        widget.setVisible(not is_collapsed)
+
+        for widget in widgets_to_hide:
+            widget.setVisible(not is_collapsed)
+
+        # Adjust grid spacing for ultra-compact mode
+        if mode == 2:  # Ultra-compact
+            self._grid.setSpacing(2)
+        else:
+            self._grid.setSpacing(4)
+
+        # Adjust window dimensions
+        self._recalculate_dimensions(mode)
+
+    def _recalculate_dimensions(self, mode: int):
+        """Calculate and set window dimensions based on compact mode.
+        
+        Args:
+            mode: 0=full, 1=compact, 2=ultra-compact
+        """
+        QApplication.processEvents()
+        
+        menu_h = self.menuBar().sizeHint().height()
+        margins = 4 + 4  # top + bottom from root layout
+        spacing = 4      # spacing between grid and bottom bar
+        title_bar_h = self.frameGeometry().height() - self.geometry().height()
+        if title_bar_h <= 0:
+            title_bar_h = 31  # reasonable default
+
+        visible_count = self._use_counters
+        visible_rows = (visible_count + 3) // 4  # ceil(count / 4)
+        grid_spacing = self._grid.spacing()
+        
+        if mode == 0:  # Full mode
+            # Use actual counter widget height
+            row_h = self._counters[0].sizeHint().height()
+            grid_h = visible_rows * row_h + max(0, visible_rows - 1) * grid_spacing
+            bottom_h = self._bottom_bar.height()
+            window_width = 1230
+            
+        elif mode == 1:  # Compact mode
+            # Get actual compact height by asking a counter widget
+            # Counter shows: title bar + value label only
+            QApplication.processEvents()
+            row_h = self._counters[0].sizeHint().height()
+            grid_h = visible_rows * row_h + max(0, visible_rows - 1) * grid_spacing
+            bottom_h = 34
+            window_width = 1230
+            
+        else:  # Ultra-compact mode (mode == 2)
+            # Even more compact with smaller fonts
+            QApplication.processEvents()
+            row_h = self._counters[0].sizeHint().height()
+            grid_h = visible_rows * row_h + max(0, visible_rows - 1) * grid_spacing
+            bottom_h = 34
+            # Reduce width - calculate based on number of columns needed
+            cols = min(4, visible_count)  # max 4 columns
+            # Ultra-compact: ~180px per counter + margins and spacing
+            window_width = cols * 180 + 20  # 20px for margins
+
+        total = title_bar_h + menu_h + margins + grid_h + spacing + bottom_h
+
+        # Set width
+        self.setMinimumWidth(window_width)
+        self.setMaximumWidth(window_width)
+        self.setFixedWidth(window_width)
+        
+        # Set height
+        self.setMinimumHeight(0)
+        self.setMaximumHeight(16777215)
+        self.resize(window_width, total)
         self.setFixedHeight(total)
 
     # ==================================================================
