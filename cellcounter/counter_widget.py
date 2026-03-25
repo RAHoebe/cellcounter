@@ -274,6 +274,7 @@ class CounterWidget(QGroupBox):
         if ok:
             self.value = float(val)
             self._update_display(-1000)  # -1000 = display-only, no alarm check
+            self.value_changed.emit(self.index, self.value, 0)
 
     # ------------------------------------------------------------------
     # Counter operations
